@@ -15,7 +15,7 @@ Text strings undergo a rigorous cleaning and tokenization process before being f
 
 * **Cleaning:** All text is converted to lowercase, non-letter characters are stripped via regular expressions, and whitespace is collapsed.
 * **Tokenization:** A Keras Tokenizer is fitted on the training data, capped at a maximum vocabulary size of 50,000 words. Out-of-vocabulary words are replaced with an `<OOV>` token.
-* **Padding:** Sequences are padded or truncated to a maximum length of 215 tokens. This length was chosen because it represents the 95th percentile of sequence lengths in the training set.
+* **Padding:** Sequences are padded or truncated to a maximum length of 223 tokens. This length was chosen because it represents the 95th percentile of sequence lengths in the training set.
 
 ---
 
