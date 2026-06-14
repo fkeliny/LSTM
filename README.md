@@ -20,29 +20,35 @@ Text strings undergo a rigorous cleaning and tokenization process before being f
 ---
 
 ## 🧠 Model Architecture
-The core of the project is a Recurrent Neural Network (RNN) built using TensorFlow and Keras. It employs the following layer structure:
 
-1.  **Embedding Layer:** Maps the 50,000-word vocabulary into a 128-dimensional continuous vector space. It utilizes `mask_zero=True` to inform downstream layers to ignore padding tokens.
-2.  **SpatialDropout1D:** Applies a 30% dropout rate across entire 1D feature maps to promote regularization.
-3.  **Bidirectional LSTM:** A long short-term memory layer with 128 hidden units that reads the sequence both forwards and backwards. It includes a standard dropout of 20% and a recurrent dropout of 10%.
-4.  **Dense Hidden Layer:** A fully connected layer with 64 units and a ReLU activation function.
-5.  **Dropout Layer:** Drops 50% of the nodes to further prevent overfitting.
-6.  **Output Layer:** A Dense layer with 6 units and a Sigmoid activation function, outputting independent probabilities for each of the six toxicity labels.
+The core of the project is a deep Recurrent Neural Network (RNN) built using TensorFlow and Keras 3. It utilizes a sequence-aware architecture designed to capture full context across textual comments before predicting multi-label classifications. 
+
+The sequential graph is structured with the following layers:
+
+1. **Embedding Layer (`embedding`):** Maps the dynamically calculated `vocab_size` (capped at 50,000 words via `MAX_VOCAB`) into a 128-dimensional continuous vector space (`EMBEDDING_DIM = 128`). It explicitly enforces `mask_zero=True` to signal downstream recurrent layers to disregard padding tokens.
+2. **SpatialDropout1D Layer (`spatial_dropout`):** Drops entire 1-dimensional feature blocks at a 30% rate (`0.3`) across the sequence to promote contextual regularization rather than localized word dependency.
+3. **Bidirectional LSTM Layer (`bilstm`):** Wraps an LSTM layer with 128 hidden units (`HIDDEN_DIM = 128`). By processing text concurrently left-to-right and right-to-left, it extracts both past and future structural syntax. It includes a standard internal dropout of 20% (`0.2`) and a recurrent dropout of 10% (`0.1`) to avoid parameter co-adaptation.
+4. **Dense Hidden Layer (`dense_hidden`):** A fully connected bottleneck projection with 64 units and a **ReLU** (Rectified Linear Unit) activation function to introduce non-linear parameter mappings.
+5. **Dropout Layer (`dropout`):** Applies a strong 50% (`0.5`) dropout rate immediately before final classification to interrupt fragile feature paths and mitigate overfitting.
+6. **Output Layer (`output`):** A Dense layer with 6 units (`NUM_LABELS`) utilizing a **Sigmoid** activation function. This treats each target as an independent binary node, generating unique conditional probability scores concurrently for all six labels (`toxic`, `severe_toxic`, `obscene`, `threat`, `insult`, `identity_hate`).
 
 ---
 
 ## 🚀 Training Configuration
-* **Optimizer:** The model uses the legacy Adam optimizer (`tf.keras.optimizers.legacy.Adam`) with a learning rate of 1e-3. This specific legacy optimizer is chosen to ensure stability and hardware acceleration on Apple M1/M2 silicon.
-* **Loss Function:** `binary_crossentropy` is used, allowing each of the six labels to be treated as an independent binary classification task.
-* **Batch Size:** 64.
-* **Callbacks:** * **EarlyStopping:** Monitors `val_auc` and stops training if it doesn't improve for 3 epochs, restoring the best weights.
-    * **ReduceLROnPlateau:** Halves the learning rate (factor of 0.5) if the validation loss plateaus for 2 epochs.
+
+* **Optimizer:** The model utilizes the native, highly optimized **Adam** optimizer (`keras.optimizers.Adam`) with a baseline learning rate of `1e-3` ($0.001$). This leverages native hardware acceleration and stable multi-threaded gradient computations directly within the Keras 3 backend.
+* **Loss Function:** `binary_crossentropy` is implemented. This calculates cross-entropy loss across each prediction vector independently, treating the task as six parallel, isolated binary classification choices.
+* **Batch Size:** Enforced at `BATCH_SIZE = 64` across the asynchronously fetched data pipelines.
+* **Callbacks & Dynamic Optimization:**
+    * **EarlyStopping:** Configured to monitor validation performance (`monitor="val_auc"`) with a `patience=3` window. If the multi-label validation ROC-AUC stalls for 3 consecutive epochs, the training session terminates immediately and restores the historical best weights to prevent overfitting.
+    * **ReduceLROnPlateau:** Evaluates validation loss (`monitor="val_loss"`) with a `patience=2` setting. If validation progress stagnates for 2 epochs, the learning rate is automatically cut in half (`factor=0.5`) to allow finer micro-adjustments in parameter space.
 
 ---
 
 ## 📈 Evaluation & Inference
-The notebook includes comprehensive evaluation steps:
 
-* **Learning Curves:** Generates matplotlib subplots visualizing Training vs. Validation Loss, Binary Accuracy, and Multi-label ROC-AUC across all epochs.
-* **Testing:** Calculates per-label ROC-AUC scores and the overall macro mean ROC-AUC using `scikit-learn` on the unseen test set.
-* **Inference:** Provides a `predict_toxicity` function that allows users to pass raw string comments (e.g., *"Great point! I completely agree..."*) to get real-time probabilistic and binary predictions using a 0.5 threshold.
+The pipeline incorporates native validation stages to audit generalization accuracy:
+
+* **Learning Curves:** Implements dynamic `matplotlib` tracking via subplots (`plt.subplots(1, 3)`) to visualize Training vs. Validation Loss, Binary Accuracy, and Multi-label ROC-AUC concurrently across active epochs.
+* **Test Verification:** Executes predictions on an isolated, out-of-sample test array. Using `scikit-learn` metrics, it evaluates individual, per-class ROC-AUC values alongside the comprehensive macro **Mean ROC-AUC** score to gauge macro-level classification power.
+* **Out-of-Sample Inference:** Features a custom `predict_toxicity` inference engine. This utility accepts unformatted, raw text strings (e.g., *"Great point! I completely agree..."*), cleans the string format on the fly, passes the underlying tokens to the loaded network graph, and returns both continuous probability arrays and concrete binary flags mapped against a default prediction threshold of `0.5`.
